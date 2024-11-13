@@ -1,0 +1,37 @@
+#include <Arduino.h>
+#include <hardware/xosc.h>
+
+#define GPIO_EXIT_DORMANT_MODE 3 /* connect GP3 to GND once in DORMANT mode */
+
+void setup() {
+  Serial1.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+  pinMode(GPIO_EXIT_DORMANT_MODE, INPUT_PULLUP); // pull pin that will get us out of sleep mode
+}
+
+void loop() {
+  if (Serial1.available() > 0) {
+    (void) Serial1.read();
+    digitalWrite(LED_BUILTIN, LOW);
+    Serial1.end(); // disable the UART
+    pinMode(0, INPUT_PULLUP);
+    pinMode(1, INPUT_PULLUP);
+    // this interrupt source will get us out of the DORMANT mode agin
+    gpio_set_dormant_irq_enabled(GPIO_EXIT_DORMANT_MODE, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_LOW_BITS, true);
+    // disable systick now so that no milisecond interrupts will occur
+    systick_hw->csr &= ~1;
+    // we will get out of sleep when an interrupt occurs.
+    // this will shutdown the crystal oscillator until an interrupt occurs.
+    xosc_dormant();
+    // this will only be reached after wakeup.
+    gpio_acknowledge_irq(GPIO_EXIT_DORMANT_MODE, IO_BANK0_DORMANT_WAKE_INTE0_GPIO0_EDGE_LOW_BITS); // acknowledge GPIO IRQ
+    systick_hw->csr |= 1; // enable systick again, hope we survived this
+    // we don't actually know the time duration during which we were dormant.
+    // so, the absolute value of millis() will be messed up.
+    digitalWrite(LED_BUILTIN, HIGH);
+    Serial1.begin(9600); // start UART again
+  }
+  Serial1.println("hello, world");
+  delay(500);
+}
